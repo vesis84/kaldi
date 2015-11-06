@@ -6,6 +6,7 @@
 //                2013  Cisco Systems (author: Neha Agrawal) [code modified
 //                      from original code in ../gmmbin/gmm-rescore-lattice.cc]
 //                2014  Guoguo Chen
+//                2014  Vimal Manohar
 
 // See ../../COPYING for clarification regarding multiple authors
 //
@@ -28,10 +29,13 @@
 #include "util/stl-utils.h"
 #include "base/kaldi-math.h"
 #include "hmm/hmm-utils.h"
+#include "base/kaldi-types-extra.h"
 
 namespace kaldi {
 using std::map;
 using std::vector;
+
+typedef SignedLogReal<double> SignedLogDouble;
 
 int32 LatticeStateTimes(const Lattice &lat, vector<int32> *times) {
   if (!lat.Properties(fst::kTopSorted, true))
@@ -1036,6 +1040,202 @@ bool CompactLatticeToWordProns(
       state = arc.nextstate;
     }
   }
+}
+
+
+SignedLogDouble LatticeForwardBackwardNce(
+    const TransitionModel &trans,
+    const Lattice &lat,
+    Posterior *post,
+    const std::vector<BaseFloat> *weights,
+    BaseFloat weight_threshold) {
+  using namespace fst;
+  typedef Lattice::Arc Arc;
+  typedef Arc::Weight Weight;
+  typedef Arc::StateId StateId;
+
+  if (lat.Properties(fst::kTopSorted, true) == 0)
+    KALDI_ERR << "Input lattice must be topologically sorted.";
+  KALDI_ASSERT(lat.Start() == 0);
+  
+  int32 num_states = lat.NumStates();
+  vector<int32> state_times;
+  int32 max_time = LatticeStateTimes(lat, &state_times);
+
+  std::vector<SignedLogDouble> alpha_p(num_states),  // forward variable for p
+      alpha_r(num_states),                  // forward variable for -plog(p)
+      beta_p(num_states),                   // backward variable for p
+      beta_r(num_states);                   // backward variable for -plog(p)
+
+  SignedLogDouble Z;
+  SignedLogDouble r;
+
+  post->clear();
+  post->resize(max_time);
+
+  KALDI_ASSERT(lat.Start() == 0);   // For debugging
+
+  alpha_p[0].SetOne();
+  int32 final_states_count = 0;
+  // Forward Pass
+  for (StateId s = 0; s < num_states; s++) {
+    SignedLogDouble this_alpha_p(alpha_p[s]);
+    SignedLogDouble this_alpha_r(alpha_r[s]);
+    
+    for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) {
+      const Arc &arc = aiter.Value();
+      SignedLogDouble p_a(false, -ConvertToCost(arc.weight));   // Initialize from log of real number
+      
+      // r_a = (p_a * -log_p_a);
+      SignedLogDouble r_a(-p_a.LogMagnitude());
+      r_a.Multiply(p_a);
+
+      // alpha_p[n[a]] += this_alpha_p * p_a
+      alpha_p[arc.nextstate].Add(this_alpha_p * p_a);
+      
+      // alpha_r[n[a]] += this_alpha_p * r_a + this_alpha_r * p_a
+      alpha_r[arc.nextstate].Add(this_alpha_p * r_a);
+      alpha_r[arc.nextstate].Add(this_alpha_r * p_a);
+    }
+    Weight f = lat.Final(s);
+    if (f != Weight::Zero()) {
+      final_states_count++;
+      SignedLogDouble f_p(false, -(f.Value1() + f.Value2()));
+      
+      // f_r = f_p * -log_f_p
+      SignedLogDouble f_r(-f_p.LogMagnitude());   // Initialize from a real number
+      f_r.Multiply(f_p);
+
+      Z.Add(this_alpha_p * f_p);
+      
+      r.Add(this_alpha_p * f_r);
+      r.Add(this_alpha_r * f_p);
+      
+      KALDI_ASSERT(state_times[s] == max_time && "Lattice is inconsistent (final-prob not at max_time");
+    }
+  }
+
+  // Special case check where the final state has weight One(). 
+  // This case is ensured by connecting all original final states to the "Final"
+  // state through arcs carrying their respective final weights and then
+  // add a "Final" weight of One() to the new state
+  // KALDI_ASSERT(final_states_count == 1); // Apparently not true
+
+  // Backward Pass
+  for (StateId s = num_states-1; s >= 0; s--) {
+    Weight f = lat.Final(s);
+    SignedLogDouble this_beta_p;
+    SignedLogDouble this_beta_r;
+
+    if (f != Weight::Zero()) {
+      KALDI_ASSERT(state_times[s] == max_time); // Special case
+
+      SignedLogDouble f_p(false, -(f.Value1() + f.Value2()));   // Initialize from log of real number
+      
+      // f_r = f_p * -log_f_p
+      SignedLogDouble f_r(-f_p.LogMagnitude());   // Initialize from real number
+      f_r.Multiply(f_p);
+
+      this_beta_p.Add(f_p);
+      this_beta_r.Add(f_r);
+    }
+
+    for (ArcIterator<Lattice> aiter(lat,s); !aiter.Done(); aiter.Next()) {
+      const Arc &arc = aiter.Value();
+      SignedLogDouble p_a(false, -ConvertToCost(arc.weight));   // Initialize from log of real number
+      
+      // log(p_a * -log_p_a);
+      SignedLogDouble r_a(-p_a.LogMagnitude());
+      r_a.Multiply(p_a);
+      
+      this_beta_p.Add(beta_p[arc.nextstate] * p_a);
+      this_beta_r.Add(beta_p[arc.nextstate] * r_a);
+      this_beta_r.Add(beta_r[arc.nextstate] * p_a);
+    }
+    beta_p[s] = this_beta_p;
+    beta_r[s] = this_beta_r;
+    
+    KALDI_VLOG(10) << "beta_p for state " << s << " is " << beta_p[s];
+    KALDI_VLOG(10) << "beta_r for state " << s << " is " << beta_r[s];
+
+  }
+
+  // Forward-Backward Check
+  KALDI_VLOG(10) << "Total forward probability over lattice = " << Z
+                  << ", while total backward probability = " << beta_p[0];
+  KALDI_VLOG(10) << "Total forward (-plog(p)) over lattice = " << r
+            << ", while total backward (-plog(p)) = " << beta_r[0];
+  if (!Z.ApproxEqual(beta_p[0], 1e-6)) {
+    KALDI_WARN << "Total forward probability over lattice = " << Z
+              << ", while total backward probability = " << beta_p[0];
+  }
+  if (!r.ApproxEqual(beta_r[0], 1e-6)) {
+    KALDI_WARN << "Total forward (-plog(p)) over lattice = " << r
+              << ", while total backward (-plog(p)) = " << beta_r[0];
+  }
+      
+  // Compute Entropy H = r/Z + log(Z)
+  SignedLogDouble H(r);
+  H.DivideBy(Z);
+
+  KALDI_ASSERT(Z.Positive());
+  H.AddReal(Z.LogMagnitude());
+
+  KALDI_VLOG(4) << "Entropy of Lattice is " << H;
+
+  // Derivative Computation
+  for (StateId s = 0; s < num_states; s++) {
+    int32 t = state_times[s];
+    if (weights != NULL && (*weights)[t] < weight_threshold)
+      continue;
+    for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) {
+      const Arc &arc = aiter.Value();
+      SignedLogDouble p_a(false, -ConvertToCost(arc.weight));
+      
+      // log(p_a * -log_p_a);
+      SignedLogDouble r_a(-p_a.LogMagnitude());
+      r_a.Multiply(p_a);
+
+      if (arc.ilabel != 0) {
+        //SignedLogDouble delH((alpha_p[s] * beta_p[arc.nextstate] * p_a) / Z);
+        //delH.Sub((alpha_p[s] * beta_p[arc.nextstate] * p_a) / Z * r / Z); 
+        //delH.Add((alpha_p[s] * beta_r[arc.nextstate] * p_a) / Z);
+        //delH.Add((alpha_r[s] * beta_p[arc.nextstate] * p_a) / Z);
+        //delH.Sub((alpha_p[s] * beta_p[arc.nextstate] * p_a) / Z);
+        //delH.Add((alpha_p[s] * beta_p[arc.nextstate] * r_a) / Z);
+        
+        SignedLogDouble delZ = alpha_p[s] * beta_p[arc.nextstate] * p_a;
+        SignedLogDouble delr = alpha_p[s] * beta_r[arc.nextstate] * p_a;
+        delr.Add(alpha_r[s] * beta_p[arc.nextstate] * p_a);
+        delr.Add(alpha_p[s] * beta_p[arc.nextstate] * r_a);
+        delr.Sub(alpha_p[s] * beta_p[arc.nextstate] * p_a);
+
+        SignedLogDouble delH = delZ / Z;
+        delH.Sub(delZ / Z * r / Z);
+        delH.Add(delr / Z);
+
+        // Push back delNce = -delH
+        (*post)[state_times[s]].push_back(std::make_pair(arc.ilabel, -delH.Value())); 
+      
+        /*
+           (1/Z - r/Z/Z) * alpha_p[s] * beta_p[arc.nextstate] * p_a
+           + 1/Z * (
+           alpha_p[s] * beta_r[arc.nextstate] * p_a 
+           + alpha_r[s] * beta_p[arc.nextstate] * p_a
+           - alpha_p[s] * beta_p[arc.nextstate] * p_a
+           + alpha_p[s] * beta_p[arc.nextstate] * r_a
+           )
+
+           -(1.0/Z - r/Z/Z) * Exp(alpha_p[s] + beta_p[arc.nextstate] + log_p_a) 
+           - (1.0/Z) * ( Exp(alpha_p[s] + beta_r[arc.nextstate] + log_p_a)
+           + Exp(alpha_r[s] + beta_p[arc.nextstate] + log_p_a)
+           - Exp(alpha_p[s] + beta_p[arc.nextstate] + log_p_a)
+           + Exp(alpha_p[s] + beta_p[arc.nextstate] + log_r_a) )));
+           */
+      }
+    }
+  }
+  return -H;    // Negative Conditional Entropy
 }
 
 

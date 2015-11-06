@@ -4,6 +4,7 @@
 //           2012-2013   Johns Hopkins University (Author: Daniel Povey);
 //                       Bagher BabaAli
 //                2014   Guoguo Chen
+//                2014   Vimal Manohar
 
 // See ../../COPYING for clarification regarding multiple authors
 //
@@ -33,8 +34,11 @@
 #include "hmm/transition-model.h"
 #include "lat/kaldi-lattice.h"
 #include "itf/decodable-itf.h"
+#include "base/kaldi-types-extra.h"
 
 namespace kaldi {
+
+typedef SignedLogReal<double> SignedLogDouble;
 
 /// This function iterates over the states of a topologically sorted lattice and
 /// counts the time instance corresponding to each state. The times are returned
@@ -197,6 +201,19 @@ BaseFloat LatticeForwardBackwardMmi(
     bool convert_to_pdf_ids,
     bool cancel,
     Posterior *arc_post);
+
+/**
+   This function can be used to compute the derivatives of NCE objective
+   function. This function is written for using in neural-net
+   semi-supervised discriminative training. 
+   It returns the objective function, which is the negative conditional
+   entropy of the lattice given the observation sequence. */
+SignedLogDouble LatticeForwardBackwardNce(
+    const TransitionModel &trans,
+    const Lattice &lat,
+    Posterior *arc_post,
+    const std::vector<BaseFloat> *weights = NULL,
+    BaseFloat weight_threshold = 0.0);
 
 
 /// This function takes a CompactLattice that should only contain a single
