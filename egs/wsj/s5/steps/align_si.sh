@@ -20,7 +20,6 @@ beam=10
 retry_beam=40
 careful=false
 boost_silence=1.0 # Factor by which to boost silence during alignment.
-feat_type=delta
 
 # End configuration options.
 
@@ -71,7 +70,7 @@ cp $srcdir/final.occs $dir;
 
 
 
-if [ -f $srcdir/final.mat ]; then feat_type=lda; fi
+if [ -f $srcdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
 echo "$0: feature type is $feat_type"
 
 case $feat_type in
@@ -79,8 +78,6 @@ case $feat_type in
   lda) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |"
     cp $srcdir/final.mat $srcdir/full.mat $dir
   ;;
-  nodelta) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- |";;
-
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
 
