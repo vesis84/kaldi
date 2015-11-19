@@ -53,10 +53,10 @@ set -e
 set -o pipefail
 set -u
 
-ScoringProgram=`which sclite` || ScoringProgram=$KALDI_ROOT/tools/sctk/bin/sclite
+ScoringProgram=`which sclite`    || ScoringProgram=$KALDI_ROOT/tools/sctk/bin/sclite
 [ ! -x $ScoringProgram ] && echo "Cannot find scoring program at $ScoringProgram" && exit 1;
-SortingProgram=`which hubscr.pl` || ScoringProgram=$KALDI_ROOT/tools/sctk/bin/hubscr.pl
-[ ! -x $ScoringProgram ] && echo "Cannot find scoring program at $ScoringProgram" && exit 1;
+SortingProgram=`which hubscr.pl` || SortingProgram=$KALDI_ROOT/tools/sctk/bin/hubscr.pl
+[ ! -x $SortingProgram ] && echo "Cannot find sorting program at $SortingProgram" && exit 1;
 
 
 for f in $data/stm  ; do
