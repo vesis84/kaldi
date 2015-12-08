@@ -23,7 +23,9 @@ exclude_silphones=true # exclude silphones from approximate accuracy computation
 unkphonelist= # exclude unkphones from approximate accuracy computation (overrides exclude_silphones)
 one_silence_class=true # true : reduce insertions in sMBR/MPE FW/BW, more stable training,
 nce_scale=1.0
-nce_gradient_scale=0.1
+nce_gradient_scale=0.5
+xent_gradient_scale=0.2
+nce_fast=false
 verbose=3
 ivector=
 
@@ -79,7 +81,7 @@ cp $srcdir/{final.mdl,tree} $dir
 cp $nnet $dir/0.nnet; nnet=$dir/0.nnet
 cp $feature_transform $dir/final.feature_transform
 
-[ -f $alidir/prior_counts ] && class_frame_counts=alidir/prior_counts
+[ -f $srcdir/prior_counts ] && class_frame_counts=$srcdir/prior_counts
 cp $class_frame_counts $dir/ali_train_pdf.counts
 
 # Frames with '--silence-phones' are excluded from FW-BW computation,
@@ -153,6 +155,8 @@ while [ $x -le $num_iters ]; do
        --lm-scale=$lmwt \
        --nce-scale=$nce_scale \
        --nce-gradient-scale=$nce_gradient_scale \
+       --xent-gradient-scale=$xent_gradient_scale \
+       --nce-fast=$nce_fast \
        --learn-rate=$learn_rate \
        --do-smbr=$do_smbr \
        --verbose=$verbose \

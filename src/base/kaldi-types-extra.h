@@ -153,7 +153,7 @@ class SignedLogReal {
     }
 
   private:
-    bool sign_;
+    bool sign_; // (+) = false, (-) = true, 
     Real log_f_;
 };
 

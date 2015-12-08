@@ -1,6 +1,6 @@
-// nnetbin/nnet-train-mpe-sequential.cc
+// nnetbin/nnet-train-mpe-nce-sequential.cc
 
-// Copyright 2011-2013  Brno University of Technology (author: Karel Vesely);  Arnab Ghoshal
+// Copyright 2011-2015  Brno University of Technology (author: Karel Vesely);  Arnab Ghoshal
 
 // See ../../COPYING for clarification regarding multiple authors
 //
@@ -34,6 +34,7 @@
 #include "nnet/nnet-nnet.h"
 #include "nnet/nnet-pdf-prior.h"
 #include "nnet/nnet-utils.h"
+#include "nnet/nnet-loss.h"
 #include "base/timer.h"
 #include "cudamatrix/cu-device.h"
 
@@ -118,7 +119,8 @@ int main(int argc, char *argv[]) {
     BaseFloat acoustic_scale = 1.0,
         lm_scale = 1.0,
         nce_scale = 1.0,
-        nce_gradient_scale = 1.0;
+        nce_gradient_scale = 1.0,
+        xent_gradient_scale = 0.0;
     po.Register("acoustic-scale", &acoustic_scale,
                 "Scaling factor for acoustic likelihoods");
     po.Register("lm-scale", &lm_scale,
@@ -127,6 +129,8 @@ int main(int argc, char *argv[]) {
                 "Scale applied to both lattice-arc scores, only for NCE");
     po.Register("nce-gradient-scale", &nce_gradient_scale,
                 "Scale applied to NCE gradient");
+    po.Register("xent-gradient-scale", &xent_gradient_scale,
+                "Scale for F-smoothing with frame cross-entropy gradient");
     po.Register("one-silence-class", &one_silence_class, "If true, newer "
                 "behavior which will tend to reduce insertions.");
     kaldi::int32 max_frames = 6000; // Allow segments maximum of one minute by default
@@ -134,6 +138,8 @@ int main(int argc, char *argv[]) {
     bool do_smbr = false;
     po.Register("do-smbr", &do_smbr, "Use state-level accuracies instead of "
                 "phone accuracies.");
+    bool nce_fast = false;
+    po.Register("nce-fast", &nce_fast, "Use faster approximative implementation of NCE.");
 
     std::string use_gpu="yes";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA");
@@ -191,6 +197,9 @@ int main(int argc, char *argv[]) {
     TransitionModel trans_model;
     ReadKaldiObject(transition_model_filename, &trans_model);
 
+    // Build F-smoothing objective,
+    Xent xent;
+
     SequentialBaseFloatMatrixReader feature_reader(feature_rspecifier);
     RandomAccessLatticeReader den_lat_reader(den_lat_rspecifier);
     RandomAccessInt32VectorReader ref_ali_reader(ref_ali_rspecifier);
@@ -205,9 +214,8 @@ int main(int argc, char *argv[]) {
     int32 num_done = 0, num_nce_lat = 0, num_no_den_lat = 0,
       num_other_error = 0;
 
-    kaldi::int64 total_frames = 0;
+    kaldi::int64 total_frames = 0, total_frames_mbr = 0, total_frames_nce = 0;
     double total_frame_acc = 0.0, utt_frame_acc;
-    kaldi::int64 total_frames_nce = 0;
     double total_lat_nce = 0.0, lat_nce;
 
     // do per-utterance processing
@@ -226,6 +234,10 @@ int main(int argc, char *argv[]) {
       // get dims,
       int32 num_frames = mat.NumRows(),
           num_pdfs = nnet.OutputDim();
+
+      // skip NCE utterances if disabled,
+      if (!ref_ali_reader.HasKey(utt) && nce_gradient_scale == 0.0)
+        continue;
 
       // 2) get denominator lattice, preprocess,
       if (!den_lat_reader.HasKey(utt)) {
@@ -266,7 +278,7 @@ int main(int argc, char *argv[]) {
       nnet_out.CopyToMat(&nnet_out_h);
       // release the buffers we don't need anymore,
       feats_transf.Resize(0,0);
-      nnet_out.Resize(0,0);
+      //nnet_out.Resize(0,0);
 
       // 4) Rescore den-lat. with the nn-output,
       LatticeAcousticRescore(nnet_out_h, trans_model, state_times, &den_lat);
@@ -290,14 +302,14 @@ int main(int argc, char *argv[]) {
             (do_smbr?"smbr":"mpfe"), one_silence_class, &post);
 
         // logging,
-        KALDI_VLOG(2) << num_done+1 << " " << utt << ", " 
-                      << (do_smbr ? "smbr" : "mpfe")
+        KALDI_VLOG(2) << "#" << num_done+1 << ", " << utt << ", " 
+                      << (do_smbr ? "sMBR" : "MPFE")
                       << " accuracy " << utt_frame_acc/num_frames << ", "
                       << den_lat.NumStates() << " states, "
                       << fst::NumArcs(den_lat) << " arcs, "
                       << num_frames << " frames.";
         total_frame_acc += utt_frame_acc;
-        total_frames += num_frames;
+        total_frames_mbr += num_frames;
       } else {
         // Do NCE,
       
@@ -306,14 +318,22 @@ int main(int argc, char *argv[]) {
           fst::ScaleLattice(fst::LatticeScale(nce_scale, nce_scale), &den_lat);
 
         // objective function,
-        lat_nce = LatticeForwardBackwardNce(trans_model, den_lat, &post).Value();
+        if (nce_fast) {
+          //lat_nce = LatticeForwardBackwardNceFast(trans_model, den_lat, &post).Value();
+          Posterior lat_post;
+          LatticeForwardBackward(den_lat, &lat_post);
+          lat_nce = PosteriorToNce(trans_model, silence_phones, lat_post, &post);
+        } else {
+          Posterior lat_post;
+          lat_nce = LatticeForwardBackwardNce(trans_model, silence_phones, den_lat, &post, &lat_post).Value();
+        }
 
         // scale the gradient (equivalent to scaling the learning rate),
         ScalePosterior(nce_gradient_scale, &post);
         
         // logging,
-        KALDI_VLOG(2) << num_done+1 << " " << utt << ", "
-                      << " NCE " << (lat_nce/num_frames) << ", "
+        KALDI_VLOG(2) << "#" << num_done+1 << ", " << utt << ", "
+                      << "NCE " << (lat_nce/num_frames) << ", "
                       << den_lat.NumStates() << " states, "
                       << fst::NumArcs(den_lat) << " arcs, "
                       << num_frames << " frames.";
@@ -325,13 +345,34 @@ int main(int argc, char *argv[]) {
       // 6) convert the Posterior to CuMatrix,
       PosteriorToMatrixMapped(post, trans_model, &nnet_diff);
       nnet_diff.Scale(-1.0); // need to flip the sign of derivative,
-      KALDI_VLOG(3) << MomentStatistics(nnet_diff);
+      KALDI_VLOG(3) << "dObj :" << MomentStatistics(nnet_diff);
+
+      // 6a) add the F-smoothing gradient,
+      if (ref_ali_reader.HasKey(utt) && xent_gradient_scale > 0.0) {
+        Posterior ref_post;
+        CuMatrix<BaseFloat> ref_mat, nnet_out_smx, xent_diff;
+        // read alignment, check the length,
+        AlignmentToPosterior(ref_ali_reader.Value(utt), &ref_post);
+        PosteriorToMatrixMapped(ref_post, trans_model, &ref_mat);
+        KALDI_ASSERT(ref_mat.NumRows() == num_frames);
+        // create dummy frame weights,
+        Vector<BaseFloat> frame_weights(num_frames);
+        frame_weights.Set(1.0);
+        // Applying softmax to DNN output, WARNING! the priors are already subtracted!
+        nnet_out_smx.Resize(nnet_out.NumRows(),nnet_out.NumCols());
+        nnet_out_smx.ApplySoftMaxPerRow(nnet_out);
+        // evaluate the frame cross-entropy,
+        xent.Eval(frame_weights, nnet_out_smx, ref_mat, &xent_diff);
+        // mix the derivatives,
+        nnet_diff.AddMat(xent_gradient_scale, xent_diff);
+      }
 
       // 7) backpropagate through the nnet,
       nnet.Backpropagate(nnet_diff, NULL);
       nnet_diff.Resize(0,0); // release GPU memory,
 
       // logging,
+      total_frames += num_frames;
       num_done++;
       if (num_done % 100 == 0) {
         time_now = time.Elapsed();
@@ -361,11 +402,12 @@ int main(int argc, char *argv[]) {
               << num_other_error << " with other errors.";
 
     KALDI_LOG << "Overall average " << (do_smbr?"smbr":"mpfe") 
-              << " frame-accuracy is " << (total_frame_acc/total_frames) 
-              << " over " << total_frames << " frames.";
+              << " frame-accuracy is " << (total_frame_acc/total_frames_mbr) 
+              << " over " << total_frames_mbr << " frames.";
     KALDI_LOG << "Overall average Negative Conditional Entropy is "
               << (total_lat_nce/total_frames_nce) << " over " << total_frames_nce
               << " frames.";
+    KALDI_LOG << "Overall F-smoothing " << xent.Report();
 
 
 #if HAVE_CUDA == 1

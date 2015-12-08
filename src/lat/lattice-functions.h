@@ -210,11 +210,25 @@ BaseFloat LatticeForwardBackwardMmi(
    entropy of the lattice given the observation sequence. */
 SignedLogDouble LatticeForwardBackwardNce(
     const TransitionModel &trans,
+    const std::vector<int32> &silence_phones,
+    const Lattice &lat,
+    Posterior *nce_diff,
+    Posterior *post,
+    const std::vector<BaseFloat> *weights = NULL,
+    BaseFloat weight_threshold = 0.0);
+
+SignedLogDouble LatticeForwardBackwardNceFast(
+    const TransitionModel &trans,
     const Lattice &lat,
     Posterior *arc_post,
     const std::vector<BaseFloat> *weights = NULL,
     BaseFloat weight_threshold = 0.0);
 
+double PosteriorToNce(
+    const TransitionModel &trans, 
+    const std::vector<int32> &silence_phones, 
+    const Posterior &post, 
+    Posterior *nce_diff);
 
 /// This function takes a CompactLattice that should only contain a single
 /// linear sequence (e.g. derived from lattice-1best), and that should have been

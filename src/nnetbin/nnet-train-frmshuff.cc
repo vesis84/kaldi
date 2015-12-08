@@ -298,6 +298,7 @@ int main(int argc, char *argv[]) {
             KALDI_VLOG(2) << "### After " << total_frames << " frames,";
             KALDI_VLOG(2) << nnet.InfoPropagate();
             if (!crossvalidate) {
+              KALDI_VLOG(2) << nnet.InfoBackPropagate();
               KALDI_VLOG(2) << nnet.InfoGradient();
             }
           }
