@@ -1236,6 +1236,47 @@ void CuMatrixBase<Real>::AddMatMatElements(Real alpha,
   }
 }
 
+template<typename Real>
+void CuMatrixBase<Real>::ParametricReLU(const CuMatrixBase<Real> &src, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b) {
+  KALDI_ASSERT(SameDim(*this, src));
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+
+    dim3 dimBlock(CU2DBLOCK, CU2DBLOCK);
+    dim3 dimGrid(n_blocks(src.NumCols(), CU2DBLOCK), n_blocks(src.NumRows(), CU2DBLOCK));
+
+    cuda_parametric_relu(dimGrid, dimBlock, this->data_, src.data_, this->Dim(), src.Stride(), a.data_, b.data_);
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    Mat().ParametricReLU(src.Mat(), a.Vec(), b.Vec());
+  }
+}
+
+template<typename Real> 
+void CuMatrixBase<Real>::DiffParametricReLU(const CuMatrixBase<Real> &value,
+                                  const CuMatrixBase<Real> &diff, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b) {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+
+    dim3 dimBlock(CU2DBLOCK, CU2DBLOCK);
+    dim3 dimGrid(n_blocks(num_cols_, CU2DBLOCK), n_blocks(num_rows_, CU2DBLOCK));
+
+    cuda_diff_parametric_relu(dimGrid, dimBlock, data_, diff.data_, value.data_, Dim(), diff.Stride(), value.Stride(), a.data_, b.data_);
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    Mat().DiffParametricReLU(value.Mat(), diff.Mat(), a.Vec(), b.Vec());
+  }
+}
 
 template<typename Real>
 void CuMatrixBase<Real>::Sigmoid(const CuMatrixBase<Real> &src) {

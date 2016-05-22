@@ -59,6 +59,7 @@ class Component {
     kSoftmax,
     kHiddenSoftmax,
     kBlockSoftmax,
+    kParametricReLU,
     kSigmoid,
     kTanh,
     kDropout,
