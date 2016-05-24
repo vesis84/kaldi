@@ -251,8 +251,8 @@ class CuMatrixBase {
   void CopyColFromVec(const CuVectorBase<Real> &v, const MatrixIndexT col);
 
   /// Compute the rectified linear unit function; element by element,
-  /// *this = ParametricReLU(src).
-  void ParametricReLU(const CuMatrixBase<Real> &src, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b);
+  /// *this = ParametricRelu(src).
+  void ParametricRelu(const CuMatrixBase<Real> &src, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b);
 
   /// Set each element to the sigmoid of the corresponding element of "src":
   /// element by element, x = 1 / (1 + exp(-x))
@@ -265,7 +265,7 @@ class CuMatrixBase {
 
   /// Apply the function y = log(1 + exp(x)), to each element.
   /// Note: the derivative of this function is the sigmoid function.
-  /// This is like a soft ReLU.
+  /// This is like a soft Relu.
   void SoftHinge(const CuMatrixBase<Real> &src);
 
   /// Apply the function y(i) = (sum_{j = i*G}^{(i+1)*G-1} x_j ^ (power)) ^ (1 / p)
@@ -304,8 +304,8 @@ class CuMatrixBase {
   void Tanh(const CuMatrixBase<Real> &src);
 
   /// Differentiate backward through the relu function.  Here, "value" is the
-  /// ParametricReLU output.  Does, element-by-element, *this = diff * (x > 0 ? alpha*1: beta *1).
-  void DiffParametricReLU(const CuMatrixBase<Real> &value,
+  /// ParametricRelu output.  Does, element-by-element, *this = diff * (x > 0 ? alpha*1: beta *1).
+  void DiffParametricRelu(const CuMatrixBase<Real> &value,
                 const CuMatrixBase<Real> &diff, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b);
 
   /// Differentiate backward through the sigmoid function.  Here, "value" is the

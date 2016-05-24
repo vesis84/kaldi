@@ -1237,8 +1237,12 @@ void CuMatrixBase<Real>::AddMatMatElements(Real alpha,
 }
 
 template<typename Real>
-void CuMatrixBase<Real>::ParametricReLU(const CuMatrixBase<Real> &src, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b) {
-  KALDI_ASSERT(SameDim(*this, src));
+void CuMatrixBase<Real>::ParametricRelu(
+     const CuMatrixBase<Real> &src,
+     const CuVectorBase<Real> &a,
+     const CuVectorBase<Real> &b) {
+  KALDI_ASSERT(a.Dim() == this->NumCols());
+  KALDI_ASSERT(b.Dim() == this->NumCols());
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;
@@ -1253,13 +1257,16 @@ void CuMatrixBase<Real>::ParametricReLU(const CuMatrixBase<Real> &src, const CuV
   } else
 #endif
   {
-    Mat().ParametricReLU(src.Mat(), a.Vec(), b.Vec());
+    Mat().ParametricRelu(src.Mat(), a.Vec(), b.Vec());
   }
 }
 
 template<typename Real> 
-void CuMatrixBase<Real>::DiffParametricReLU(const CuMatrixBase<Real> &value,
-                                  const CuMatrixBase<Real> &diff, const CuVectorBase<Real> &a, const CuVectorBase<Real> &b) {
+void CuMatrixBase<Real>::DiffParametricRelu(
+     const CuMatrixBase<Real> &value,
+     const CuMatrixBase<Real> &diff,
+     const CuVectorBase<Real> &a,
+     const CuVectorBase<Real> &b) {
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;
@@ -1274,7 +1281,7 @@ void CuMatrixBase<Real>::DiffParametricReLU(const CuMatrixBase<Real> &value,
   } else
 #endif
   {
-    Mat().DiffParametricReLU(value.Mat(), diff.Mat(), a.Vec(), b.Vec());
+    Mat().DiffParametricRelu(value.Mat(), diff.Mat(), a.Vec(), b.Vec());
   }
 }
 
