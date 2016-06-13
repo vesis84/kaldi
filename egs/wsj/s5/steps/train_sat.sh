@@ -16,6 +16,7 @@ exit_stage=-100 # you can use this to require it to exit at the
                 # beginning of a specific stage.  Not all values are
                 # supported.
 fmllr_update_type=full
+fmllr_min_count=500  # default
 cmd=run.pl
 scale_opts="--transition-scale=1.0 --acoustic-scale=0.1 --self-loop-scale=0.1"
 beam=10
@@ -117,7 +118,7 @@ else
     $cmd JOB=1:$nj $dir/log/fmllr.0.JOB.log \
       ali-to-post "ark:gunzip -c $alidir/ali.JOB.gz|" ark:- \| \
       weight-silence-post $silence_weight $silphonelist $alidir/final.mdl ark:- ark:- \| \
-      gmm-est-fmllr --fmllr-update-type=$fmllr_update_type \
+      gmm-est-fmllr --fmllr-update-type=$fmllr_update_type --fmllr-min-count=$fmllr_min_count \
       --spk2utt=ark:$sdata/JOB/spk2utt $alidir/final.mdl "$sifeats" \
       ark:- ark:$dir/trans.JOB || exit 1;
   fi
@@ -204,7 +205,7 @@ while [ $x -lt $num_iters ]; do
       $cmd JOB=1:$nj $dir/log/fmllr.$x.JOB.log \
         ali-to-post "ark:gunzip -c $dir/ali.JOB.gz|" ark:-  \| \
         weight-silence-post $silence_weight $silphonelist $dir/$x.mdl ark:- ark:- \| \
-        gmm-est-fmllr --fmllr-update-type=$fmllr_update_type \
+        gmm-est-fmllr --fmllr-update-type=$fmllr_update_type --fmllr-min-count=$fmllr_min_count \
         --spk2utt=ark:$sdata/JOB/spk2utt $dir/$x.mdl \
         "$feats" ark:- ark:$dir/tmp_trans.JOB || exit 1;
       for n in `seq $nj`; do
