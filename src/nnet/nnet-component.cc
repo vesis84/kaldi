@@ -45,7 +45,11 @@
 #include "nnet/nnet-sentence-averaging-component.h"
 #include "nnet/nnet-frame-pooling-component.h"
 #include "nnet/nnet-parallel-component.h"
+<<<<<<< 676a6aa13178f14d5100c281283e1d5f5f75d8d2
 #include "nnet/nnet-multibasis-component.h"
+=======
+#include "nnet/nnet-parametric-relu.h"
+>>>>>>> 	modified:   src/cudamatrix/cu-kernels-ansi.h
 
 namespace kaldi {
 namespace nnet1 {
@@ -60,6 +64,7 @@ const struct Component::key_value Component::kMarkerMap[] = {
   { Component::kSoftmax, "<Softmax>" },
   { Component::kHiddenSoftmax, "<HiddenSoftmax>" },
   { Component::kBlockSoftmax, "<BlockSoftmax>" },
+  { Component::kParametricRelu,"<ParametricRelu>" },
   { Component::kSigmoid, "<Sigmoid>" },
   { Component::kTanh, "<Tanh>" },
   { Component::kDropout, "<Dropout>" },
@@ -136,6 +141,9 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
       break;
     case Component::kBlockSoftmax :
       ans = new BlockSoftmax(input_dim, output_dim);
+      break;
+    case Component::kParametricRelu :
+      ans = new ParametricRelu(input_dim, output_dim); 
       break;
     case Component::kSigmoid :
       ans = new Sigmoid(input_dim, output_dim);
