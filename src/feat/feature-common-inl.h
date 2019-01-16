@@ -20,8 +20,11 @@
 #ifndef KALDI_FEAT_FEATURE_COMMON_INL_H_
 #define KALDI_FEAT_FEATURE_COMMON_INL_H_
 
+
 #include "feat/resample.h"
 // Do not include this file directly.  It is included by feat/feature-common.h
+
+#include <iomanip>
 
 namespace kaldi {
 
@@ -72,10 +75,13 @@ void OfflineFeatureTpl<F>::Compute(
   Vector<BaseFloat> window;  // windowed waveform.
   bool use_raw_log_energy = computer_.NeedRawLogEnergy();
   for (int32 r = 0; r < rows_out; r++) {  // r is frame index.
+    KALDI_VLOG(10) << "### Feature row: " << r << " ###";
     BaseFloat raw_log_energy = 0.0;
     ExtractWindow(0, wave, r, computer_.GetFrameOptions(),
                   feature_window_function_, &window,
                   (use_raw_log_energy ? &raw_log_energy : NULL));
+
+    KALDI_VLOG(10) << std::setprecision(9) << "Pre-processed window of samples: " << window;
 
     SubVector<BaseFloat> output_row(*output, r);
     computer_.Compute(raw_log_energy, vtln_warp, &window, &output_row);

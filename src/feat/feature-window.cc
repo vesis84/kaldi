@@ -23,6 +23,7 @@
 #include "feat/feature-window.h"
 #include "matrix/matrix-functions.h"
 
+#include <iomanip>
 
 namespace kaldi {
 
@@ -137,11 +138,15 @@ void ProcessWindow(const FrameExtractionOptions &opts,
   int32 frame_length = opts.WindowSize();
   KALDI_ASSERT(window->Dim() == frame_length);
 
+  KALDI_VLOG(10) << "window without padding (initial) " << *window;
+
   if (opts.dither != 0.0)
     Dither(window, opts.dither);
+  KALDI_VLOG(10) << "window without padding (dithered) " << *window;
 
   if (opts.remove_dc_offset)
     window->Add(-window->Sum() / frame_length);
+  KALDI_VLOG(10) << "window without padding (dc removed) " << *window;
 
   if (log_energy_pre_window != NULL) {
     BaseFloat energy = std::max<BaseFloat>(VecVec(*window, *window),
@@ -151,8 +156,12 @@ void ProcessWindow(const FrameExtractionOptions &opts,
 
   if (opts.preemph_coeff != 0.0)
     Preemphasize(window, opts.preemph_coeff);
+  KALDI_VLOG(10) << "window without padding (preemphasized) " << *window;
 
   window->MulElements(window_function.window);
+  KALDI_VLOG(10) << "window function dim " << window_function.window.Dim();
+  KALDI_VLOG(10) << std::setprecision(9) << "window function " << window_function.window;
+  KALDI_VLOG(10) << std::setprecision(9) << "window without padding (windowed) " << *window;
 }
 
 
@@ -187,6 +196,8 @@ void ExtractWindow(int64 sample_offset,
   // piece of wave that we're trying to extract.
   int32 wave_start = int32(start_sample - sample_offset),
       wave_end = wave_start + frame_length;
+  KALDI_VLOG(10) << "wave_start=" << wave_start << " wave_end=" << wave_end;
+
   if (wave_start >= 0 && wave_end <= wave.Dim()) {
     // the normal case-- no edge effects to consider.
     window->Range(0, frame_length).CopyFromVec(
@@ -213,6 +224,7 @@ void ExtractWindow(int64 sample_offset,
 
   if (frame_length_padded > frame_length)
     window->Range(frame_length, frame_length_padded - frame_length).SetZero();
+  KALDI_VLOG(10) << "window of samples with padding " << *window;
 
   SubVector<BaseFloat> frame(*window, 0, frame_length);
 

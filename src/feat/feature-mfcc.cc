@@ -21,6 +21,7 @@
 
 #include "feat/feature-mfcc.h"
 
+#include <iomanip>
 
 namespace kaldi {
 
@@ -29,6 +30,9 @@ void MfccComputer::Compute(BaseFloat signal_log_energy,
                            BaseFloat vtln_warp,
                            VectorBase<BaseFloat> *signal_frame,
                            VectorBase<BaseFloat> *feature) {
+
+  KALDI_VLOG(10) << "Beginning of 'MfccComputer::Compute': " << *signal_frame;
+
   KALDI_ASSERT(signal_frame->Dim() == opts_.frame_opts.PaddedWindowSize() &&
                feature->Dim() == this->Dim());
 
@@ -48,18 +52,31 @@ void MfccComputer::Compute(BaseFloat signal_log_energy,
   SubVector<BaseFloat> power_spectrum(*signal_frame, 0,
                                       signal_frame->Dim() / 2 + 1);
 
+  KALDI_VLOG(10) << "Power spectrum dim: " << power_spectrum.Dim();
+  KALDI_VLOG(10) << std::setprecision(9) << "Power spectrum: " << power_spectrum;
+
   mel_banks.Compute(power_spectrum, &mel_energies_);
+
+  KALDI_VLOG(10) << std::setprecision(9) << "Mel energies: " << mel_energies_;
 
   // avoid log of zero (which should be prevented anyway by dithering).
   mel_energies_.ApplyFloor(std::numeric_limits<float>::epsilon());
   mel_energies_.ApplyLog();  // take the log.
 
+  KALDI_VLOG(10) << std::setprecision(9) << "Log-mel energies: " << mel_energies_;
+
   feature->SetZero();  // in case there were NaNs.
   // feature = dct_matrix_ * mel_energies [which now have log]
   feature->AddMatVec(1.0, dct_matrix_, kNoTrans, mel_energies_, 0.0);
 
+  KALDI_VLOG(10) << std::setprecision(9) << "DCT matrix: " << dct_matrix_;
+  KALDI_VLOG(10) << std::setprecision(9) << "Feature (from dct) : " << *feature;
+
+
   if (opts_.cepstral_lifter != 0.0)
     feature->MulElements(lifter_coeffs_);
+
+  KALDI_VLOG(10) << std::setprecision(9) << "Feature (after lifter) : " << *feature;
 
   if (opts_.use_energy) {
     if (opts_.energy_floor > 0.0 && signal_log_energy < log_energy_floor_)
@@ -77,6 +94,8 @@ void MfccComputer::Compute(BaseFloat signal_log_energy,
     // the cosine transform.)
     (*feature)(opts_.num_ceps - 1)  = energy;
   }
+
+  KALDI_VLOG(10) << std::setprecision(9) << "Feature (htk compat - coeffs were shifted) : " << *feature;
 }
 
 MfccComputer::MfccComputer(const MfccOptions &opts):
