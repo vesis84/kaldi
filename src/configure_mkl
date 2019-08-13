@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Get the config,
+source /usr/local/share/intel/mkl/bin/mklvars.sh intel64 ilp64
+
+# Use older compiler
+# export CXX=g++-5.5 # CUDA 8.0 requires version '< 6.0',
+# export CXX=g++-6.4 # CUDA 9.0 requires version '<7.0',
+# export CXX=g++-7.3 # CUDA 9.2 works with version '7.3',
+export CXX=g++-7.4 # CUDA 10.0 works well with version '7.4',
+
+# Use different CUDA,
+# CUDATK=/usr/local/share/cuda-8.0.61 # CUDA 8.0 supports gcc 5.5.0,
+# CUDATK=/usr/local/share/cuda-9.0.176 # CUDA 9.0 supports gcc 6.4.0,
+# CUDATK=/usr/local/share/cuda-9.2.88 # CUDA 9.2 supports gcc 7.3.0,
+CUDATK=/usr/local/share/cuda-10.1.243 # CUDA 10.0 supports our default gcc 7.4.0,
+# and add '--cudatk-dir=$CUDATK' to './configure'
+
+# Generate kaldi.mk,
+./configure --mkl-root=$MKLROOT --cudatk-dir=$CUDATK --shared

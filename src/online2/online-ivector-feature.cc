@@ -435,8 +435,10 @@ OnlineIvectorFeature::OnlineIvectorFeature(
 
 void OnlineIvectorFeature::SetAdaptationState(
     const OnlineIvectorExtractorAdaptationState &adaptation_state) {
+  /*
   KALDI_ASSERT(num_frames_stats_ == 0 &&
                "SetAdaptationState called after frames were processed.");
+  */
   KALDI_ASSERT(ivector_stats_.IvectorDim() ==
                adaptation_state.ivector_stats.IvectorDim());
   ivector_stats_ = adaptation_state.ivector_stats;

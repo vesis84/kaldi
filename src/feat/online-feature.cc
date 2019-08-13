@@ -487,8 +487,10 @@ void OnlineCmvn::GetState(int32 cur_frame,
 }
 
 void OnlineCmvn::SetState(const OnlineCmvnState &cmvn_state) {
+  /*
   KALDI_ASSERT(cached_stats_modulo_.empty() &&
                "You cannot call SetState() after processing data.");
+  */
   orig_state_ = cmvn_state;
   frozen_state_ = cmvn_state.frozen_state;
 }
